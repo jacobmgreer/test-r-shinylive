@@ -1,54 +1,80 @@
-library(ggvis)
+#
+# This is a Shiny web application. You can run the application by clicking
+# the 'Run App' button above.
+#
+# Find out more about building applications with Shiny here:
+#
+#    http://shiny.rstudio.com/
+#
 
-# For dropdown menu
-actionLink <- function(inputId, ...) {
-  tags$a(href='javascript:void',
-         id=inputId,
-         class='action-button',
-         ...)
-}
+library(shiny)
+library(tidyverse)
 
-fluidPage(
-  titlePanel("Movie explorer"),
-  fluidRow(
-    column(3,
-      wellPanel(
-        h4("Filter"),
-        sliderInput("reviews", "Minimum number of reviews on Rotten Tomatoes",
-          10, 300, 80, step = 10),
-        sliderInput("year", "Year released", 1940, 2014, value = c(1970, 2014),
-          sep = ""),
-        sliderInput("oscars", "Minimum number of Oscar wins (all categories)",
-          0, 4, 0, step = 1),
-        sliderInput("boxoffice", "Dollars at Box Office (millions)",
-          0, 800, c(0, 800), step = 1),
-        selectInput("genre", "Genre (a movie can have multiple genres)",
-          c("All", "Action", "Adventure", "Animation", "Biography", "Comedy",
-            "Crime", "Documentary", "Drama", "Family", "Fantasy", "History",
-            "Horror", "Music", "Musical", "Mystery", "Romance", "Sci-Fi",
-            "Short", "Sport", "Thriller", "War", "Western")
-        ),
-        textInput("director", "Director name contains (e.g., Miyazaki)"),
-        textInput("cast", "Cast names contains (e.g. Tom Hanks)")
-      ),
-      wellPanel(
-        selectInput("xvar", "X-axis variable", axis_vars, selected = "Meter"),
-        selectInput("yvar", "Y-axis variable", axis_vars, selected = "Reviews"),
-        tags$small(paste0(
-          "Note: The Tomato Meter is the proportion of positive reviews",
-          " (as judged by the Rotten Tomatoes staff), and the Numeric rating is",
-          " a normalized 1-10 score of those reviews which have star ratings",
-          " (for example, 3 out of 4 stars)."
-        ))
+load("movies.RData")
+
+# Define UI for application that draws a histogram
+ui <- fluidPage(
+  titlePanel("Movie browser, 1970 to 2014", windowTitle = "Movies"),
+  sidebarLayout(
+    sidebarPanel(
+      checkboxGroupInput(
+        inputId = "type",
+        label = "Title type:",
+        choices = levels(movies$title_type),
+        selected = "Feature Film"
       )
     ),
-    column(9,
-      ggvisOutput("plot1"),
-      wellPanel(
-        span("Number of movies selected:",
-          textOutput("n_movies")
+    mainPanel(
+      tabsetPanel(
+        type = "tabs",
+        tabPanel("Plot", plotOutput("plot")),
+        tabPanel("Summary", tableOutput("summary")),
+        tabPanel("Data", DT::dataTableOutput("data")),
+        tabPanel(
+          "Reference", tags$p(
+            "There data were obtained from",
+            tags$a("IMDB", href = "http://www.imdb.com/"), "and",
+            tags$a("Rotten Tomatoes", href = "https://www.rottentomatoes.com/"), "."
+          ),
+          tags$p("The data represent ", nrow(movies), "randomly sampled movies released between 1972 to 2014 in the Unites States.")
         )
       )
     )
   )
 )
+
+# Define server logic required to draw a histogram
+server <- function(input, output) {
+  
+  load("movies.RData")
+  
+  movies_subset <- reactive({
+    movies %>%
+      filter(title_type %in% input$type)
+  })
+  
+  output$plot <- renderPlot({
+    ggplot(movies_subset(), aes(x = critics_score, y = audience_score, color = mpaa_rating)) +
+      geom_point()
+  })
+  output$summary <- renderTable(
+    {
+      movies_subset() %>%
+        group_by(mpaa_rating) %>%
+        summarise(
+          mean_as = mean(audience_score), sd_as = sd(audience_score),
+          mean_cs = mean(critics_score), sd_cs = sd(critics_score),
+          n = n(), cor = cor(audience_score, critics_score)
+        )
+    },
+    digits = 3
+  )
+  output$data <- DT::renderDataTable({
+    movies_subset() %>%
+      DT::datatable(options = list(pageLength = 10), rownames = FALSE)
+  })
+  
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
